@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="sr-Latn">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vizita — učenje za primarnu zdravstvenu zaštitu</title>
+  <meta name="description" content="Najčešća i hitna stanja u primarnoj zdravstvenoj zaštiti: lekcije, klinički slučajevi i provera znanja.">
+  <meta name="theme-color" content="#0E7C6B">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="shell">
+    <nav class="nav" aria-label="Glavna navigacija">
+      <a class="brand" href="#/">
+        <img src="icons/icon-192.png" alt="" width="34" height="34">
+        <span>Vizita</span>
+      </a>
+      <a class="nav-link" data-nav="pocetna" href="#/">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+        <span>Početna</span>
+      </a>
+      <a class="nav-link" data-nav="ucenje" href="#/ucenje">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6c-2-1.6-4.7-2-8-2v14c3.3 0 6 .4 8 2 2-1.6 4.7-2 8-2V4c-3.3 0-6 .4-8 2zm0 0v14"/></svg>
+        <span>Učenje</span>
+      </a>
+      <a class="nav-link" data-nav="provera" href="#/provera">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 3 3 5-6"/></svg>
+        <span>Provera</span>
+      </a>
+      <a class="nav-link" data-nav="napredak" href="#/napredak">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10m6 10V4m6 16v-7m5 7H2"/></svg>
+        <span>Napredak</span>
+      </a>
+    </nav>
+    <main id="app" tabindex="-1"></main>
+  </div>
+
+  <script src="js/core.js"></script>
+  <script src="js/data/hitna-kardio.js"></script>
+  <script src="js/data/hitna-ostalo.js"></script>
+  <script src="js/data/pedijatrija.js"></script>
+  <script src="js/data/kardio.js"></script>
+  <script src="js/data/respiratorno.js"></script>
+  <script src="js/data/endokrino.js"></script>
+  <script src="js/data/git.js"></script>
+  <script src="js/data/urogenitalno.js"></script>
+  <script src="js/data/neuro-psih.js"></script>
+  <script src="js/data/lokomotorni.js"></script>
+  <script src="js/data/koza-infekcije.js"></script>
+  <script src="js/data/prevencija.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
