@@ -48,7 +48,8 @@ self.addEventListener('fetch', (event) => {
     const cached = await cache.match(req, { ignoreSearch: true });
     const network = fetch(req).then((res) => {
       if (res.ok) cache.put(req, res.clone());
-      return res;
+      // Ako sajt privremeno ne radi (404/5xx), keširana verzija je bolja od stranice sa greškom.
+      return res.ok || !cached ? res : cached;
     });
     if (!cached) return network;
     // Spora veza: posle 2,5 s prikaži keširanu verziju, a osvežavanje se nastavlja u pozadini.
