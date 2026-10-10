@@ -16,10 +16,19 @@
     (cat.cases || []).forEach((c) => CASES.set(c.id, { c, cat }));
   });
 
+  const ECGS = window.MED.ecgs || [];
+  const ECG_IX = new Map(ECGS.map((e) => [e.id, e]));
+  const ECG_GROUPS = [
+    ['ritam', 'Ritam i frekvencija'],
+    ['sprovodjenje', 'Poremećaji sprovođenja'],
+    ['ishemija', 'Ishemija i infarkt'],
+    ['ostalo', 'Hipertrofija i ostalo']
+  ];
+
   // ---------- Stanje (čuva se na uređaju) ----------
 
   const KEY = 'vizita.v1';
-  const EMPTY = { learned: {}, q: {}, cases: {}, days: [], last: null, name: '', theme: 'auto' };
+  const EMPTY = { learned: {}, q: {}, cases: {}, ecg: {}, days: [], last: null, name: '', theme: 'auto' };
   let S = load();
 
   function load() {
@@ -193,7 +202,15 @@
   }
 
   function catGrid() {
-    return `<div class="cat-grid">${CATS.map((cat) => {
+    const ecgDone = ECGS.filter((e) => S.ecg[e.id] && S.ecg[e.id].last === 'c').length;
+    const ecgCard = ECGS.length ? `<a class="card cat-card" href="#/ekg" style="--c:#E5484D">
+        <div class="row"><span class="cat-icon">📈</span><h3 class="grow">EKG atlas</h3></div>
+        <div>
+          <div class="bar"><i style="width:${pct(ecgDone, ECGS.length)}%"></i></div>
+          <p class="small muted" style="margin-top:6px">${ecgDone} od ${ECGS.length} zapisa prepoznato</p>
+        </div>
+      </a>` : '';
+    return `<div class="cat-grid">${ecgCard}${CATS.map((cat) => {
       const done = learnedIn(cat);
       return `<a class="card cat-card" href="#/oblast/${cat.id}" style="--c:${cat.color}">
         <div class="row"><span class="cat-icon">${cat.icon}</span><h3 class="grow">${esc(cat.title)}</h3></div>
@@ -353,6 +370,7 @@
         <button class="card tile" data-act="quiz" data-kind="quick"><div class="emoji">⚡</div><h3>Brzi kviz</h3><p>10 pitanja, objašnjenje odmah</p></button>
         <button class="card tile" data-act="quiz" data-kind="urgent"><div class="emoji">🚑</div><h3>Hitna stanja</h3><p>10 pitanja iz hitnih stanja</p></button>
         <button class="card tile" data-act="quiz" data-kind="exam"><div class="emoji">📝</div><h3>Ispit</h3><p>30 pitanja, rezultat na kraju</p></button>
+        ${ECGS.length ? '<button class="card tile" data-act="ecg-quiz"><div class="emoji">📈</div><h3>EKG kviz</h3><p>Prepoznaj nalaz na pravom zapisu</p></button>' : ''}
         <button class="card tile" data-act="quiz" data-kind="mistakes" ${wrong ? '' : 'disabled'}><div class="emoji">🔁</div><h3>Ponovi greške</h3><p>${wrong ? wrong + ' za ponavljanje' : 'Nema grešaka'}</p></button>
       </div>
 
@@ -562,6 +580,239 @@
     </div>`;
   }
 
+  // ---------- EKG atlas ----------
+
+  const LEADS = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
+  const ECG_N = 1000;   // 10 s na 100 Hz po odvodu, vrednosti u mikrovoltima
+
+  function ecgSamples(e) {
+    if (e._d) return e._d;
+    const bin = atob(e.data);
+    const d = new Int16Array(bin.length / 2);
+    for (let i = 0; i < d.length; i++) d[i] = ((bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8)) << 16) >> 16;
+    e._d = d;
+    return d;
+  }
+
+  // Standardni ispis: 25 mm/s, 10 mm/mV, 4 kolone po 2,5 s i traka ritma (II) od 10 s. Jedinica crtanja je milimetar.
+  function drawEcg(canvas) {
+    const e = ECG_IX.get(canvas.dataset.ecg);
+    if (!e) return;
+    const d = ecgSamples(e);
+    const W = 254, ROW = 27, H = ROW * 4 + 8, X0 = 2, Y0 = 3;
+    const fit = canvas.parentElement.clientWidth / W;
+    const ppm = canvas.dataset.zoom === '1' ? Math.max(5, fit * 1.8) : Math.max(2.6, fit);
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = W * ppm + 'px';
+    canvas.style.height = H * ppm + 'px';
+    canvas.width = Math.round(W * ppm * dpr);
+    canvas.height = Math.round(H * ppm * dpr);
+    const g = canvas.getContext('2d');
+    g.setTransform(ppm * dpr, 0, 0, ppm * dpr, 0, 0);
+    g.fillStyle = '#FFF8F6';
+    g.fillRect(0, 0, W, H);
+
+    const grid = (step, color, width) => {
+      g.beginPath();
+      for (let x = X0 % step; x <= W; x += step) { g.moveTo(x, 0); g.lineTo(x, H); }
+      for (let y = Y0 % step; y <= H; y += step) { g.moveTo(0, y); g.lineTo(W, y); }
+      g.strokeStyle = color;
+      g.lineWidth = width;
+      g.stroke();
+    };
+    grid(1, '#F6D5D3', 0.07);
+    grid(5, '#EBA9A6', 0.14);
+
+    const baseline = (lead) => {
+      const a = Array.from(d.subarray(lead * ECG_N, (lead + 1) * ECG_N)).sort((p, q) => p - q);
+      return a[ECG_N / 2];
+    };
+    const trace = (lead, from, to, y) => {
+      const m = baseline(lead);
+      g.beginPath();
+      for (let i = from; i < to; i++) {
+        const px = X0 + i * 0.25, py = y - (d[lead * ECG_N + i] - m) / 100;
+        if (i === from) g.moveTo(px, py); else g.lineTo(px, py);
+      }
+      g.strokeStyle = '#15181B';
+      g.lineWidth = Math.max(0.3, 1.25 / ppm);
+      g.lineJoin = 'round';
+      g.stroke();
+    };
+    const label = (text, x, y) => {
+      g.font = '600 3.4px system-ui, sans-serif';
+      g.fillStyle = '#B42318';
+      g.fillText(text, x, y);
+    };
+
+    for (let col = 0; col < 4; col++) {
+      for (let row = 0; row < 3; row++) {
+        const lead = col * 3 + row, y = Y0 + ROW * row + ROW / 2;
+        trace(lead, col * 250, (col + 1) * 250, y);
+        label(LEADS[lead], X0 + col * 62.5 + 1.2, y - ROW / 2 + 4.5);
+        if (col) {
+          g.beginPath();
+          g.moveTo(X0 + col * 62.5, y - 4);
+          g.lineTo(X0 + col * 62.5, y + 4);
+          g.strokeStyle = '#15181B';
+          g.lineWidth = 0.2;
+          g.stroke();
+        }
+      }
+    }
+    const yr = Y0 + ROW * 3 + ROW / 2;
+    trace(1, 0, ECG_N, yr);
+    label('II', X0 + 1.2, yr - ROW / 2 + 4.5);
+    g.textAlign = 'right';
+    label('25 mm/s · 10 mm/mV', W - 2, H - 1.6);
+    g.textAlign = 'left';
+  }
+
+  const drawAllEcg = () => app.querySelectorAll('canvas[data-ecg]').forEach(drawEcg);
+
+  function ecgPaper(e) {
+    return `<div class="ecg-box">
+      <div class="ecg-wrap"><canvas data-ecg="${e.id}" aria-label="EKG zapis, 12 odvoda"></canvas></div>
+      <div class="ecg-bar">
+        <span class="small muted">${esc(e.sex)}, ${e.age} god.${e.context ? ' · ' + esc(e.context) : ''}</span>
+        <button class="back" style="margin:0" data-act="ecg-zoom">🔍 Uvećaj</button>
+      </div>
+    </div>`;
+  }
+
+  function viewEcgList() {
+    if (!ECGS.length) return notFound();
+    return `<div class="stack-lg" style="--c:#E5484D">
+      <header>
+        ${backBtn('#/ucenje', 'Učenje')}
+        <div class="cat-head"><span class="cat-icon">📈</span><h1>EKG atlas</h1></div>
+        <p class="muted" style="margin-top:10px">${ECGS.length} pravih 12-kanalnih zapisa. Prvo pogledaj zapis i sama ga pročitaj, pa otvori tumačenje.</p>
+      </header>
+      <div class="btn-row">
+        <button class="btn" data-act="ecg-quiz">EKG kviz</button>
+        ${TOPICS.has('ekg-osnove') ? '<a class="btn ghost" href="#/tema/ekg-osnove">Lekcija: osnove EKG-a</a>' : ''}
+      </div>
+      ${ECG_GROUPS.map(([key, name]) => {
+        const items = ECGS.filter((e) => e.group === key);
+        return items.length ? `<section>
+          <div class="section-head"><h2>${name}</h2></div>
+          <div class="list">${items.map((e) => `<a class="card item" href="#/ekg/${e.id}">
+            <span class="state ${S.ecg[e.id] && S.ecg[e.id].last === 'c' ? 'on' : ''}">✓</span>
+            <span class="grow"><h3>${esc(e.title)}</h3><p>${esc(e.summary)}</p></span>
+            <span class="chev">›</span>
+          </a>`).join('')}</div>
+        </section>` : '';
+      }).join('')}
+      <p class="notice">Zapisi su iz javne baze PTB-XL (Wagner i sar., Scientific Data 2020; PhysioNet, licenca CC BY 4.0). Dijagnoze su preuzete iz baze, gde su ih potvrdili kardiolozi. Prikazani su bez dodatnog filtriranja, 25 mm/s i 10 mm/mV.</p>
+    </div>`;
+  }
+
+  function ecgReading(e) {
+    return `<section class="card sec steps"><h2>Sistematično čitanje</h2><ol>${e.findings.map((f) => `<li>${fmt(f)}</li>`).join('')}</ol></section>
+      <section class="card sec pearls"><h2>💡 Zaključak</h2><p>${fmt(e.conclusion)}</p></section>
+      <section class="card sec refer"><h2>🏥 Šta dalje</h2><p>${fmt(e.action)}</p></section>`;
+  }
+
+  let ecgOpen = null;   // id zapisa čije je tumačenje otvoreno
+
+  function viewEcg(id) {
+    const e = ECG_IX.get(id);
+    if (!e) return notFound();
+    const i = ECGS.indexOf(e);
+    const prev = ECGS[i - 1], next = ECGS[i + 1];
+    const open = ecgOpen === id;
+    const lesson = e.topic && TOPICS.get(e.topic);
+    return `<article class="stack" style="--c:#E5484D">
+      <div>${backBtn('#/ekg', 'EKG atlas')}</div>
+      <h1>${open ? esc(e.title) : 'Šta vidiš na ovom zapisu?'}</h1>
+      ${ecgPaper(e)}
+      ${open ? ecgReading(e) + (lesson ? `<a class="card item" href="#/tema/${e.topic}"><span class="cat-icon">${lesson.cat.icon}</span><span class="grow"><h3>${esc(lesson.t.title)}</h3><p>Lekcija</p></span><span class="chev">›</span></a>` : '')
+        : `<p class="muted">Prođi redom: frekvencija, ritam, osovina, PR, QRS, ST i T. Kad imaš svoj zaključak, uporedi ga.</p>
+           <button class="btn block" data-act="ecg-open" data-id="${id}">Prikaži tumačenje</button>`}
+      <p class="sources">PTB-XL, zapis br. ${e.rec} · CC BY 4.0</p>
+      <nav class="pager">
+        ${prev ? `<a class="card" href="#/ekg/${prev.id}"><span>‹ Prethodni</span>Zapis ${i}</a>` : '<span></span>'}
+        ${next ? `<a class="card" href="#/ekg/${next.id}"><span>Sledeći ›</span>Zapis ${i + 2}</a>` : '<span></span>'}
+      </nav>
+    </article>`;
+  }
+
+  let ecgQuiz = null;
+
+  function startEcgQuiz() {
+    const weight = (e) => (!S.ecg[e.id] ? 3 : S.ecg[e.id].last === 'w' ? 4 : 1);
+    const chosen = ECGS
+      .map((e) => ({ e, k: Math.pow(Math.random(), 1 / weight(e)) }))
+      .sort((a, b) => b.k - a.k)
+      .slice(0, 8)
+      .map((o) => o.e);
+    ecgQuiz = {
+      i: 0,
+      done: false,
+      items: chosen.map((e) => {
+        // Dva ometača iz iste grupe nalaza i jedan iz druge, da izbor ne bude očigledan.
+        const others = shuffle(ECGS.filter((x) => x.title !== e.title));
+        const same = others.filter((x) => x.group === e.group).slice(0, 2);
+        const rest = others.filter((x) => !same.includes(x)).slice(0, 3 - same.length);
+        return { e, options: [e.title].concat(same.concat(rest).map((x) => x.title)), order: shuffle([0, 1, 2, 3]), pick: null };
+      })
+    };
+    if (location.hash === '#/ekgkviz') render();
+    else location.hash = '#/ekgkviz';
+  }
+
+  function viewEcgQuiz() {
+    if (!ecgQuiz) {
+      location.replace('#/provera');
+      return '';
+    }
+    const total = ecgQuiz.items.length;
+    if (ecgQuiz.done) {
+      const right = ecgQuiz.items.filter((it) => it.order[it.pick] === 0).length;
+      const p = pct(right, total);
+      const wrong = ecgQuiz.items.filter((it) => it.order[it.pick] !== 0);
+      return `<div class="stack-lg">
+        <div class="card result">
+          <p class="eyebrow">EKG kviz</p>
+          ${ring(p, right + '/' + total, 'on-surface big')}
+          <h1>${p}% tačno</h1>
+          <p class="muted">${verdict(p)}</p>
+          <div class="btn-row">
+            <button class="btn" data-act="ecg-quiz">Novi EKG kviz</button>
+            <a class="btn ghost" href="#/ekg">EKG atlas</a>
+          </div>
+        </div>
+        ${wrong.length ? `<section>
+          <div class="section-head"><h2>Pogledaj ponovo</h2></div>
+          <div class="list">${wrong.map((it) => `<a class="card item" href="#/ekg/${it.e.id}">
+            <span class="cat-icon" style="--c:#E5484D">📈</span>
+            <span class="grow"><h3>${esc(it.e.title)}</h3><p>Tvoj odgovor: ${esc(it.options[it.order[it.pick]])}</p></span>
+            <span class="chev">›</span>
+          </a>`).join('')}</div>
+        </section>` : ''}
+      </div>`;
+    }
+    const it = ecgQuiz.items[ecgQuiz.i];
+    const reveal = it.pick !== null;
+    const ok = reveal && it.order[it.pick] === 0;
+    return `<div class="stack" style="--c:#E5484D">
+      <div class="quiz-top">
+        <a class="back" href="#/provera">✕</a>
+        <div class="bar"><i style="width:${pct(ecgQuiz.i + (reveal ? 1 : 0), total)}%"></i></div>
+        <span class="count">${ecgQuiz.i + 1}/${total}</span>
+      </div>
+      ${ecgPaper(it.e)}
+      <p class="question">Koji je glavni nalaz na ovom EKG-u?</p>
+      ${optionButtons(it.order, it.options, 0, it.pick, reveal, 'ecg-answer')}
+      ${reveal ? `<div class="feedback ${ok ? '' : 'no'}" id="feedback">
+        <h3>${ok ? 'Tačno' : 'Netačno'}: ${esc(it.e.title)}</h3>
+        <p>${fmt(it.e.conclusion)}</p>
+        <a href="#/ekg/${it.e.id}" data-act="ecg-open" data-id="${it.e.id}">Otvori celo tumačenje ›</a>
+      </div>
+      <button class="btn block" data-act="ecg-next">${ecgQuiz.i === total - 1 ? 'Završi' : 'Sledeći zapis'}</button>` : ''}
+    </div>`;
+  }
+
   // ---------- Napredak ----------
 
   function viewProgress() {
@@ -625,7 +876,7 @@
     return { name: name || 'pocetna', arg: arg ? decodeURIComponent(arg) : '' };
   }
 
-  const NAV = { pocetna: 'pocetna', ucenje: 'ucenje', oblast: 'ucenje', tema: 'ucenje', provera: 'provera', kviz: 'provera', slucaj: 'provera', napredak: 'napredak' };
+  const NAV = { pocetna: 'pocetna', ucenje: 'ucenje', oblast: 'ucenje', tema: 'ucenje', ekg: 'ucenje', ekgkviz: 'provera', provera: 'provera', kviz: 'provera', slucaj: 'provera', napredak: 'napredak' };
 
   function render(keepScroll) {
     const { name, arg } = route();
@@ -641,10 +892,13 @@
       provera: viewPractice,
       kviz: viewQuiz,
       slucaj: () => viewCase(arg),
+      ekg: () => (arg ? viewEcg(arg) : viewEcgList()),
+      ekgkviz: viewEcgQuiz,
       napredak: viewProgress
     };
     app.innerHTML = (views[name] || notFound)();
     document.querySelectorAll('.nav-link').forEach((a) => a.classList.toggle('active', a.dataset.nav === NAV[name]));
+    drawAllEcg();
     if (!keepScroll) window.scrollTo(0, 0);
   }
 
@@ -675,6 +929,41 @@
       }
       if (quiz.exam) quiz.items.forEach((it) => record(it.ref.id, isCorrect(it)));
       quiz.done = true;
+      render();
+    },
+
+    'ecg-quiz': () => startEcgQuiz(),
+
+    'ecg-open'(el) {
+      ecgOpen = el.dataset.id;
+      if (route().name === 'ekg') render(true);
+    },
+
+    'ecg-zoom'(el) {
+      const canvas = el.closest('.ecg-box').querySelector('canvas');
+      canvas.dataset.zoom = canvas.dataset.zoom === '1' ? '' : '1';
+      el.textContent = canvas.dataset.zoom ? '🔍 Umanji' : '🔍 Uvećaj';
+      drawEcg(canvas);
+    },
+
+    'ecg-answer'(el) {
+      const it = ecgQuiz.items[ecgQuiz.i];
+      if (it.pick !== null) return;
+      it.pick = Number(el.dataset.k);
+      const ok = it.order[it.pick] === 0;
+      const r = S.ecg[it.e.id] || { c: 0, w: 0 };
+      if (ok) r.c++; else r.w++;
+      r.last = ok ? 'c' : 'w';
+      S.ecg[it.e.id] = r;
+      touchDay();
+      save();
+      render(true);
+      revealFeedback();
+    },
+
+    'ecg-next'() {
+      if (ecgQuiz.i < ecgQuiz.items.length - 1) ecgQuiz.i++;
+      else ecgQuiz.done = true;
       render();
     },
 
@@ -724,7 +1013,7 @@
 
     reset(el) {
       if (el.dataset.armed) {
-        S = Object.assign({}, EMPTY, { learned: {}, q: {}, cases: {}, days: [], name: S.name, theme: S.theme });
+        S = Object.assign({}, EMPTY, { learned: {}, q: {}, cases: {}, ecg: {}, days: [], name: S.name, theme: S.theme });
         save();
         render();
         return;
@@ -760,13 +1049,13 @@
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
     const name = route().name;
-    if (name !== 'kviz' && name !== 'slucaj') return;
+    if (name !== 'kviz' && name !== 'slucaj' && name !== 'ekgkviz') return;
     const k = '1234'.indexOf(e.key) >= 0 ? '1234'.indexOf(e.key) : 'abcd'.indexOf(e.key.toLowerCase());
     if (k >= 0) {
       const btn = app.querySelectorAll('.opt:not([disabled])')[k];
       if (btn) btn.click();
     } else if (e.key === 'Enter') {
-      const btn = app.querySelector('[data-act="next"]:not([disabled]), [data-act="case-next"]');
+      const btn = app.querySelector('[data-act="next"]:not([disabled]), [data-act="case-next"], [data-act="ecg-next"]');
       if (btn) {
         e.preventDefault();
         btn.click();
@@ -781,7 +1070,16 @@
     if (route().name === 'pocetna') render(true);
   });
 
-  window.addEventListener('hashchange', () => render());
+  window.addEventListener('hashchange', () => {
+    if (route().name !== 'ekg') ecgOpen = null;
+    render();
+  });
+
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(drawAllEcg, 150);
+  });
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

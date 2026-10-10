@@ -496,6 +496,21 @@ a.card:active, button.card:active { transform: scale(.985); }
 .review .a.ok { color: var(--good); font-weight: 600; }
 .review .e { margin-top: 8px; font-size: .9rem; color: var(--muted); }
 
+/* ---------- EKG ---------- */
+
+.ecg-box { display: grid; gap: 8px; }
+.ecg-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #FFF8F6;
+  box-shadow: var(--shadow);
+  -webkit-overflow-scrolling: touch;
+}
+.ecg-wrap canvas { display: block; }
+.ecg-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sec > p { margin: 0; }
+
 /* ---------- Napredak i podešavanja ---------- */
 
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }

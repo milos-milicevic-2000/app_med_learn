@@ -1,11 +1,12 @@
 // Offline podrška: mreža ima prednost (da izmene sadržaja odmah stignu), keš je rezerva.
-const CACHE = 'vizita-v1';
+const CACHE = 'vizita-v2';
 const SHELL = [
   './',
   'index.html',
   'css/style.css',
   'js/core.js',
   'js/app.js',
+  'js/ecg-data.js',
   'js/data/hitna-kardio.js',
   'js/data/hitna-ostalo.js',
   'js/data/pedijatrija.js',

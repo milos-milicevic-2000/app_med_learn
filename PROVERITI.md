@@ -86,3 +86,13 @@ kombinovana pilula nije bezbedna (osim pušenja od 35. godine, pritiska 160/100 
 porođaja), PEACE-LOVE pojedinosti, formulacija uslova za prinudnu hospitalizaciju, hemioprofilaksa i
 prijava meningokokne bolesti, tvrdnje da analgezija ne maskira hirurški nalaz i da direktno pitanje o
 suicidu ne povećava rizik.
+
+## EKG atlas
+
+- Zapisi su stvarni snimci iz javne baze PTB-XL (PhysioNet, CC BY 4.0). Dijagnoza svakog zapisa je preuzeta
+  iz baze, gde su je potvrdili kardiolozi.
+- Opisi nalaza ("Sistematično čitanje") napisani su gledanjem zapisa i nisu prošli pregled kardiologa.
+  Frekvencije su izračunate iz zapisa; PR preko 300 ms kod AV bloka I stepena je procena sa uprosečenog otkucaja.
+- Zapisi su na 100 Hz, pa se stimulus pejsmejkera i sitni detalji vide slabije nego na papiru.
+- U bazi nema ventrikularne tahikardije, ventrikularne fibrilacije ni asistolije (snimci su u mirovanju), a
+  nema ni čistog primera AV bloka II stepena, pa ih atlas ne sadrži.
